@@ -1,0 +1,13 @@
+{
+  "current_bank_erg": 215925,
+  "current_erg_price": 0.28,
+  "current_bank_usd": 60459.00000000001,
+  "target_sigusd_frac": 0.7,
+  "target_sigusd_usd": 42321.3,
+  "contract_mint_available": "False",
+  "sigmausd_ratio": 2.331690200767662,
+  "dex_pool_sigusd": 79532,
+  "scenario_dex_1k_days": 43,
+  "scenario_dex_2k_days": 22,
+  "scenario_contract_days": 716
+}

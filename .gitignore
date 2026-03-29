@@ -2,3 +2,6 @@ node_modules/
 .env
 .env.local
 .secrets
+
+# Large data files — too big for git, regenerate locally
+backtest/data/block_timestamps_master.csv
