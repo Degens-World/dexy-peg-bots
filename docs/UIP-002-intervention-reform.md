@@ -340,7 +340,42 @@ contract. Existing tokens and LP positions are unaffected.
 the permissionless tracking trigger remains exactly as deployed. The intervention NFT
 would be migrated to the updated contract.
 
-**Change 3** requires no contract changes.
+**Change 3** requires new contracts and modifications to the intervention path:
+
+- **New: `bankSigUSD.es`** — A singleton reserve box (identified by a new SigUSD Reserve
+  NFT) that holds the Bank's SigUSD tokens. Spending conditions mirror the existing Bank
+  box pattern: the box can only be spent when a recognized action NFT (intervention,
+  accumulation, or update) is present at a designated input index. The box preserves its
+  NFT, script, and token IDs across transitions.
+
+- **New: `accumulate.es`** — A permissionless accumulation contract that allows any wallet
+  to deposit SigUSD into the `bankSigUSD` reserve box. Validates: SigUSD token ID matches,
+  reserve box NFT preserved, SigUSD balance strictly increases, ERG value preserved. This
+  enables off-chain bots to execute the DEX buy → deposit flow without any trusted
+  intermediary. A rate limit (e.g., max X SigUSD per epoch) may be added to prevent
+  manipulation.
+
+- **Modified: `intervention.es`** — Adds a second spending path. When the Bank's reserve
+  ratio (computed from oracle rate, Bank ERG, and SigUSD reserve value) falls below a
+  threshold stored in a register, the intervention contract can spend from the SigUSD
+  reserve box instead of (or in addition to) the ERG Bank box. The flow:
+  1. Redeem SigUSD from the reserve box via the SigmaUSD contract (SigUSD → ERG at oracle
+     price minus 2.25% fee)
+  2. Inject the received ERG into the LP (same as current intervention)
+  3. Update both the Bank box and SigUSD reserve box in a single atomic transaction
+
+- **Threshold register** — The reserve ratio below which the SigUSD path activates is
+  stored as a register value in the intervention box (or the Bank box), updateable via
+  the existing updateNFT governance mechanism. Backtested optimal: 75-80%.
+
+All SigUSD reserve management is on-chain and trustless. No wallet holds funds. No
+multisig. The accumulation bot is permissionless (anyone can run it). The spending path
+is enforced by ErgoScript with the same singleton-NFT state machine pattern used by
+the rest of the protocol.
+
+**Implementation scope:** 2 new contracts + 1 modified contract + 1 new NFT. Comparable
+in complexity to adding the extract-to-future mechanism. Requires governance vote (3-of-5
+ballot) for the intervention contract update.
 
 ---
 
@@ -369,10 +404,15 @@ would be migrated to the updated contract.
    remaining inputs provide better robustness?
 6. Should whitelisted operators receive an explicit on-chain reward?
 7. How many of the current oracle pool operators would realistically run intervention bots?
-8. Should the DEX accumulation be automated (a bot that buys $1K SigUSD/day from the
-   MewFinance pool) or manually executed by governance?
+8. Should the `accumulate.es` contract include a rate limit to prevent front-running
+   the accumulation (e.g., someone dumping cheap SigUSD into the reserve box right before
+   an intervention to profit from the redemption)?
 9. At what DEX pool depth does slippage become prohibitive? Current pool (~$80K SigUSD
    side) supports $1-2K/day easily but would need to grow for faster accumulation.
+10. Can the SigUSD redemption (reserve box → SigmaUSD contract → ERG → LP) be executed
+    atomically in a single Ergo transaction, or does it require a multi-step chained flow?
+    This affects intervention latency and the number of blocks the SigUSD spending path
+    requires.
 
 ---
 
