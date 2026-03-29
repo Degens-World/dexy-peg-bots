@@ -71,15 +71,15 @@ positive. The ratio declined because ERG/USD approximately halved while USE obli
 remained in dollar terms. The Bank holds exclusively ERG-denominated reserves and therefore
 has no structural hedge against the asset it is defending against.
 
-### The LP Lock Is the Only Thing Keeping This Protocol Alive
+### The LP Lock Is a Critical Safety Net — But It Expires
 
-The USE LP has a 2-year redemption lock. If LP holders could exit freely today, rational
-actors seeing a 51% reserve ratio would redeem immediately — withdrawing ERG from the LP,
-collapsing the pool depth, accelerating the depeg, and triggering a classic bank run. The
-protocol survives today not because of its economic design but because exit is contractually
-blocked. This is not a sustainable foundation. When the lock expires, the protocol must be
-in a position where LP holders *choose* to stay — which requires reserve ratios that inspire
-confidence, not the current 51%.
+The USE LP has a 2-year redemption lock. The oracle-gated redemption check (requiring LP
+rate > 98% of oracle) provides additional exit friction during depeg events. Together, these
+mechanisms prevent a bank run at 51% reserves. But the time lock expires, and the oracle
+gate only helps during active depeg — it does not prevent orderly exits when the rate is
+near peg. If LP holders see a 51% reserve ratio at lock expiry, rational actors exit at
+the first opportunity. The protocol must be in a position where LP holders *choose* to
+stay — which requires reserve ratios that inspire confidence, not the current 51%.
 
 ---
 
@@ -93,13 +93,14 @@ This proposal includes three changes:
 
 From a clean 97% starting point (no arb front-running), the post-swap rate cap of 99.5%
 binds before the reserve cap in most conditions. At 0.5% of Bank reserves (~1,090 ERG at
-current levels), the intervention pushes the LP from 97% to approximately **97.6%** —
-below the 98% threshold required to unblock LP redemptions and FreeMint. The intervention
-would fire, spend Bank ERG, and leave the protocol still frozen. This is worse than the
-status quo.
+current levels), the intervention pushes the LP from 97% to approximately **97.5–98.0%** —
+which may not reliably cross the 98% threshold required to unblock LP redemptions and
+FreeMint. The intervention could fire, spend Bank ERG, and leave the protocol still frozen.
 
 At 0.7% of Bank reserves (~1,527 ERG at current levels), the intervention pushes the LP
-from 97% to approximately **98.3%**, reliably crossing the 98% threshold with a small margin.
+from 97% to approximately **98.0–98.5%**, crossing the 98% threshold with a small margin.
+(These estimates use the constant-product AMM formula with current LP reserves and should
+be validated against live LP depth before deployment — see Open Question 1.)
 
 **Proposed:** Set the maximum intervention cap at 0.7% of Bank reserves.
 
@@ -176,7 +177,8 @@ operator acts first.
 
 ### Change 3: SigUSD Mixed Reserve Strategy — 30% ERG / 70% SigUSD Target
 
-This change is a governance recommendation rather than a contract modification.
+This change requires new on-chain contracts for trustless reserve management (see
+Backwards Compatibility section for full architecture).
 
 **Current state:** Bank holds exclusively ERG-denominated reserves (215,925 ERG, ~$60K).
 
@@ -196,9 +198,9 @@ May 2022 Luna event, and the 2023-2026 sustained decline.
 | 60–80% | 21.9% | 41.7% | 62.9% | **83.5%** |
 | 80%+ | 1.2% | 5.7% | 35.2% | **71.9%** |
 
-The 70% SigUSD strategy holds **72% reserve ratio even during 80%+ ERG crashes** where
-the current 100% ERG strategy falls to 1%. Under UIP-001's smaller/faster intervention
-regime, the numbers improve further (76% at 80%+ drawdown).
+The 70% SigUSD strategy (D_30_70) holds **72% reserve ratio even during 80%+ ERG crashes**
+where the current 100% ERG strategy falls to 1%. Under UIP-001's smaller/faster
+intervention regime, the same 70% SigUSD strategy improves to 76% at 80%+ drawdown.
 
 **Sensitivity analysis** confirms 70% SigUSD with an 75-80% trigger ratio produces the
 highest minimum reserve ratio across all tested parameter combinations:
@@ -246,16 +248,22 @@ Existing SigUSD trades freely on DEX pools regardless of SigmaRSV ratio. The Ban
 buy SigUSD directly from the MewFinance SigUSD/ERG pool (pool NFT
 `9916d75132593c8b07fe18bd8d583bda1652eed7565cf41a4738ddd90fc992ec`).
 
-Current pool state: ~79,532 SigUSD / ~286,431 ERG (~$160K TVL).
+Current pool state (snapshot, March 29 2026): ~79,532 SigUSD / ~286,431 ERG (~$160K TVL).
 
-| Daily Buy | Slippage | Fee | Total Cost | Days to 70% Target |
-|-----------|---------|-----|------------|---------------------|
+| Daily Buy | Initial Slippage | Fee | Total Cost (early) | Days to 70% Target |
+|-----------|-----------------|-----|-------------------|---------------------|
 | $1,000/day | ~1.5% | 0.3% | ~1.8% | **43 days** |
 | $2,000/day | ~2.5% | 0.3% | ~2.8% | **22 days** |
 
-This is **cheaper** than contract minting (1.8% DEX cost vs 2.25% contract fee) and
-available **every day** regardless of SigmaRSV ratio. The 2026 problem (0 mint days
-this year) is completely eliminated.
+**Pool depletion note:** At $1K/day over 43 days, ~$43K SigUSD is withdrawn from a pool
+with ~$80K on the SigUSD side. Without LP rebalancing, slippage for the final days would
+be significantly higher than the initial 1.5% (pool would be ~50% depleted). In practice,
+arbitrageurs rebalance DEX pools when prices diverge from the SigmaUSD contract peg rate,
+but the accumulation timeline may extend if pool depth contracts. A slower accumulation
+rate ($500/day over ~85 days) keeps the pool impact under 1% per trade.
+
+This is **cheaper** than contract minting for the initial phase (1.8% DEX cost vs 2.25%
+contract fee) and available **every day** regardless of SigmaRSV ratio.
 
 **Recommended accumulation strategy:**
 1. Buy $1-2K SigUSD/day from DEX at ~1.5-2.5% slippage (available immediately)
@@ -358,11 +366,19 @@ would be migrated to the updated contract.
 - **Modified: `intervention.es`** — Adds a second spending path. When the Bank's reserve
   ratio (computed from oracle rate, Bank ERG, and SigUSD reserve value) falls below a
   threshold stored in a register, the intervention contract can spend from the SigUSD
-  reserve box instead of (or in addition to) the ERG Bank box. The flow:
+  reserve box instead of (or in addition to) the ERG Bank box. The intended flow:
   1. Redeem SigUSD from the reserve box via the SigmaUSD contract (SigUSD → ERG at oracle
      price minus 2.25% fee)
   2. Inject the received ERG into the LP (same as current intervention)
-  3. Update both the Bank box and SigUSD reserve box in a single atomic transaction
+  3. Update both the Bank box and SigUSD reserve box
+
+  **Atomicity is an open design question.** Composing this flow into a single TX requires
+  spending the SigmaUSD state box alongside the LP, Bank, Intervention, and SigUSD reserve
+  boxes (5+ contract inputs). The SigmaUSD contract's spending conditions may not be
+  designed for this composition. If single-TX atomicity is not feasible, the SigUSD path
+  becomes a two-step chained flow: (a) redeem SigUSD → ERG into a staging box, then
+  (b) inject staged ERG into LP via standard intervention. This adds latency (~1 block)
+  but preserves trustlessness. See Open Question 10.
 
 - **Threshold register** — The reserve ratio below which the SigUSD path activates is
   stored as a register value in the intervention box (or the Bank box), updateable via
@@ -467,7 +483,14 @@ The reserve strategy recommendation in Change 3 is backed by a quantitative back
 - 48-point sensitivity grid (6 SigUSD fractions × 4 trigger ratios × 2 regimes)
 - Intervention trigger: daily ERG price drop > 2% as proxy for LP rate < 98% of oracle
 - Calibration check: Strategy A reproduces ~39% reserve ratio from Dec 2025 bootstrap
-  (actual: ~51%, gap attributable to minting fee income not modeled)
+  (actual: ~51%). The 12 percentage point gap has two identified causes: (1) minting fee
+  income — the real Bank receives 0.3% of every FreeMint as ERG inflow, which is not
+  modeled in the simulation; on-chain data shows the Bank *gained* ~2,500 ERG net over
+  this period from fees, and (2) the intervention trigger proxy (daily ERG drop > 2%)
+  fires more aggressively than the real protocol's LP-rate-based trigger, consuming more
+  ERG in simulated interventions than occurred on-chain (38 simulated vs ~42 real, but at
+  higher average size). The model is conservative — it overstates ERG consumption, meaning
+  backtested reserve ratios are pessimistic (real performance would be better)
 
 **Output files:**
 - `results/hedge_effectiveness.csv` — Table 3 (key deliverable)
@@ -559,9 +582,9 @@ observing before continuing to 70% is a reasonable approach.
 
 The Bank does, from its existing ERG reserves. At $1K/day with 1.8% total cost
 (0.3% LP fee + ~1.5% slippage), the cost is ~$18/day or ~$770 total to reach the
-70% target over 43 days. This is roughly **0.6 ERG/day** at current prices — less than
-the miner fee for a single intervention. The accumulation cost is negligible relative
-to the protection it provides.
+70% target over 43 days. At current ERG prices ($0.28), this is roughly 64 ERG/day in
+principal + 1.1 ERG/day in fees. The fee cost (~$770 total, ~50 ERG at current prices)
+is less than 0.025% of Bank reserves — negligible relative to the protection it provides.
 
 ### "What happens when the LP lock expires and people can exit?"
 
