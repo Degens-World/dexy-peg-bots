@@ -1,0 +1,16 @@
+{
+  "name": "dexy-bots",
+  "version": "1.1.0",
+  "type": "module",
+  "description": "USE (DexyUSD) protocol maintenance bots — tracking trigger + bank intervention",
+  "scripts": {
+    "check": "node 98-intervention-bot.mjs --check",
+    "trigger": "node trigger-tracking98.mjs --execute",
+    "intervene": "node 98-intervention-bot.mjs --execute",
+    "dry-trigger": "node trigger-tracking98.mjs --dry-run",
+    "dry-intervene": "node 98-intervention-bot.mjs --dry-run"
+  },
+  "dependencies": {
+    "ergo-lib-wasm-nodejs": "^0.28.0"
+  }
+}
