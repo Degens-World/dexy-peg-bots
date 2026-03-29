@@ -116,5 +116,6 @@ The bot code is open-source at **https://github.com/Degens-World/dexy-peg-bots**
 
 ---
 
-*Report by CQ (Provably Fair Games) — March 29, 2026*
+*Report by CQ
+ — March 29, 2026*
 *White-hat security research for the Ergo community*
